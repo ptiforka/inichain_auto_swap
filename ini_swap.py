@@ -345,7 +345,9 @@ def swap_usdt_to_ini(usdt_amount_in_ether, min_out_wei=0):
 # 11. Main loop
 #############################################################################
 def main():
-    print("\n--- Bot for IniChain (fully robust) ---\n")
+    print("\n--- Bot for IniChain By Lazynode ---\n")
+    print("\n--- https://lazynode.xyz ---\n")
+
     while True:
         try:
             print("=== New Cycle ===")
