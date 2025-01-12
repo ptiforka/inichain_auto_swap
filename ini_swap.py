@@ -5,12 +5,6 @@ import requests
 from typing import Callable, Any
 from web3 import Web3
 from web3.exceptions import TimeExhausted
-from dotenv import load_dotenv
-
-#############################################################################
-# 1. Load ENV / Globals
-#############################################################################
-load_dotenv()
 
 INI_CHAIN_RPC = "http://rpc-testnet.inichain.com"
 WALLET_ADDRESS_RAW = "REPLACE_WITH_YOUR_EVM_WALLET"
