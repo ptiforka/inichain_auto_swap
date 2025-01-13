@@ -64,6 +64,7 @@ ROUTER_ABI = [
         "outputs": [{"internalType":"uint256[]","name":"","type":"uint256[]"}]
     }
 ]
+
 USDT_ABI = [
     {
         "name": "approve",
@@ -121,16 +122,13 @@ def call_with_retries(
         except ValueError as e:
             msg = str(e)
             if "replacement transaction underpriced" in msg or "code': -32000" in msg:
-                # Possibly bump gas or re-init. We'll let the caller handle it or raise it
                 print("[call_with_retries] Caught 'replacement transaction underpriced'.")
-                # raise again or re-init?
                 if attempt < max_tries:
                     print("[call_with_retries] Retry after sleeping 5s...")
                     time.sleep(5)
                 else:
                     raise
             else:
-                # other ValueError
                 print(f"[call_with_retries] Unhandled ValueError: {msg}")
                 if attempt < max_tries:
                     time.sleep(sleep_seconds)
@@ -138,7 +136,6 @@ def call_with_retries(
                     raise
 
         except Exception as e:
-            # catch-all for anything else
             print(f"[call_with_retries] Unhandled error on attempt {attempt}: {e}")
             if reinit_on_error:
                 init_web3()
@@ -193,11 +190,10 @@ def send_tx(tx_data, private_key, max_tries=3):
 
     for attempt in range(1, max_tries + 1):
         try:
-            return call_with_retries(func=do_send, max_tries=1)  # single attempt here
+            return call_with_retries(func=do_send, max_tries=1)
         except ValueError as e:
             msg = str(e)
             if "replacement transaction underpriced" in msg or "code': -32000" in msg:
-                # Bump gas price
                 old_gas = tx_local['gasPrice']
                 new_gas = int(old_gas * 1.2)
                 tx_local['gasPrice'] = new_gas
@@ -216,13 +212,12 @@ def send_tx(tx_data, private_key, max_tries=3):
                     raise
         except requests.exceptions.ConnectionError as ce:
             print(f"[send_tx] ConnectionError attempt {attempt}: {ce}")
-            init_web3()  # re-init
+            init_web3()
             if attempt < max_tries:
                 time.sleep(5)
             else:
                 raise
 
-    # if we get here, all attempts failed
     raise Exception("[send_tx] All attempts to send transaction have failed.")
 
 
@@ -295,7 +290,6 @@ def swap_ini_to_usdt(ini_amount_in_ether, min_out_wei=0):
     receipt = wait_for_tx_receipt_with_retry(tx_hash, timeout=300, poll_latency=5)
     print(f"[swap_ini_to_usdt] Confirmed in block: {receipt.blockNumber}")
 
-    # fee calc
     gas_used = receipt.gasUsed
     final_gas_price = tx_data['gasPrice']
     fee_wei = gas_used * final_gas_price
@@ -334,7 +328,6 @@ def swap_usdt_to_ini(usdt_amount_in_ether, min_out_wei=0):
     receipt = wait_for_tx_receipt_with_retry(tx_hash, timeout=300, poll_latency=5)
     print(f"[swap_usdt_to_ini] Confirmed in block: {receipt.blockNumber}")
 
-    # fee calc
     gas_used = receipt.gasUsed
     final_gas_price = tx_data['gasPrice']
     fee_wei = gas_used * final_gas_price
@@ -342,15 +335,122 @@ def swap_usdt_to_ini(usdt_amount_in_ether, min_out_wei=0):
     print(f"[swap_usdt_to_ini] Tx Fee: {fee_ini} INI\n")
 
 #############################################################################
-# 11. Main loop
+# 11. DAILY CHECK-IN CODE
+#############################################################################
+CHECKIN_ADDRESS = web3.to_checksum_address("0x73439c32e125B28139823fE9C6C079165E94C6D1")
+CHECKIN_ABI = [
+    {
+        "inputs": [],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+    }, 
+    {
+        "anonymous": False,
+        "inputs": [
+            {"indexed": False, "internalType": "address", "name": "account", "type": "address"},
+            {"indexed": False, "internalType": "uint256", "name": "time", "type": "uint256"}
+        ],
+        "name": "CheckInEvent",
+        "type": "event"
+    }, 
+    {
+        "inputs": [],
+        "name": "checkIn",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }, 
+    {
+        "inputs": [],
+        "name": "listCheckInRec",
+        "outputs": [
+            {"internalType": "uint256[]", "name": "times_", "type": "uint256[]"}
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }, 
+    {
+        "inputs": [
+            {"internalType": "uint256", "name": "_day", "type": "uint256"}
+        ],
+        "name": "listCheckInStatu",
+        "outputs": [
+            {"internalType": "bool", "name": "statu_", "type": "bool"}
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }, 
+    {
+        "inputs": [
+            {"internalType": "uint256", "name": "_start", "type": "uint256"},
+            {"internalType": "uint256", "name": "_end", "type": "uint256"}
+        ],
+        "name": "listCheckInStatus",
+        "outputs": [
+            {"internalType": "bool[]", "name": "status_", "type": "bool[]"}
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]
+
+# We'll track the last check-in time and the next random wait (in seconds).
+last_checkin_time = 0
+next_checkin_wait = 0
+
+def daily_sign_in():
+    """Calls checkIn() on the CheckIn contract once."""
+    global web3
+    checkin_contract = web3.eth.contract(address=CHECKIN_ADDRESS, abi=CHECKIN_ABI)
+
+    print("[daily_sign_in] Attempting daily sign-in...")
+    try:
+        nonce = web3.eth.get_transaction_count(WALLET_ADDRESS, "pending")
+        tx = checkin_contract.functions.checkIn().build_transaction({
+            'from': WALLET_ADDRESS,
+            'gas': 120000,
+            'gasPrice': web3.to_wei('10', 'gwei'),
+            'nonce': nonce
+        })
+        tx_hash = send_tx(tx, PRIVATE_KEY, max_tries=3)
+        print(f"[daily_sign_in] Tx sent: {web3.to_hex(tx_hash)}")
+
+        receipt = wait_for_tx_receipt_with_retry(tx_hash, timeout=180, poll_latency=5)
+        if receipt.status == 1:
+            print(f"[daily_sign_in] Success! Confirmed in block: {receipt.blockNumber}")
+        else:
+            print("[daily_sign_in] Transaction failed or reverted.")
+    except Exception as e:
+        print("[daily_sign_in] Error during sign-in:", e)
+
+#############################################################################
+# 12. Main loop
 #############################################################################
 def main():
     print("\n--- Bot for IniChain By Lazynode ---\n")
     print("\n--- https://lazynode.xyz ---\n")
 
+    # ### DAILY CHECK-IN CODE ###
+    # On startup, we do an immediate sign in
+    global last_checkin_time, next_checkin_wait
+    daily_sign_in()
+    last_checkin_time = time.time()
+    # random wait between 18 hours (64800s) and 22 hours (79200s)
+    next_checkin_wait = random.randint(64800, 79200)
+
     while True:
         try:
             print("=== New Cycle ===")
+            current_time = time.time()
+
+            # ### DAILY CHECK-IN CODE ###
+            # check if it's time for next daily sign-in
+            if (current_time - last_checkin_time) > next_checkin_wait:
+                daily_sign_in()
+                last_checkin_time = current_time
+                next_checkin_wait = random.randint(64800, 79200)
+
+            # --- main logic continues ---
             ini_balance = get_ini_balance()
             usdt_balance = get_usdt_balance()
             print(f"Balances: {ini_balance:.4f} INI, {usdt_balance:.4f} USDT")
@@ -374,8 +474,7 @@ def main():
             usdt_after = get_usdt_balance()
             print(f"After swap: {ini_after:.4f} INI, {usdt_after:.4f} USDT")
 
-            # decide how long to wait
-            sleep_cycle = random.randint(120,350)
+            sleep_cycle = random.randint(220,450)
             print(f"Sleeping {sleep_cycle} sec before second swap.")
             time.sleep(sleep_cycle)
 
@@ -393,14 +492,12 @@ def main():
             final_usdt = get_usdt_balance()
             print(f"Final Balances: {final_ini:.4f} INI, {final_usdt:.4f} USDT")
 
-            # Sleep random 2-5 minutes
-            sleep_cycle = random.randint(150,400)
+            sleep_cycle = random.randint(220,450)
             print(f"Sleeping {sleep_cycle}s before next cycle...\n")
             time.sleep(sleep_cycle)
 
         except Exception as e:
             print("[main] Unexpected error in main loop:", e)
-            # re-init web3, sleep, and keep going
             init_web3()
             time.sleep(10)
 
