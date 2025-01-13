@@ -375,7 +375,7 @@ def main():
             print(f"After swap: {ini_after:.4f} INI, {usdt_after:.4f} USDT")
 
             # decide how long to wait
-            sleep_cycle = random.randint(220,450)
+            sleep_cycle = random.randint(120,350)
             print(f"Sleeping {sleep_cycle} sec before second swap.")
             time.sleep(sleep_cycle)
 
@@ -394,7 +394,7 @@ def main():
             print(f"Final Balances: {final_ini:.4f} INI, {final_usdt:.4f} USDT")
 
             # Sleep random 2-5 minutes
-            sleep_cycle = random.randint(220,450)
+            sleep_cycle = random.randint(150,400)
             print(f"Sleeping {sleep_cycle}s before next cycle...\n")
             time.sleep(sleep_cycle)
 
