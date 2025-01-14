@@ -436,7 +436,7 @@ def main():
     daily_sign_in()
     last_checkin_time = time.time()
     # random wait between 18 hours (64800s) and 22 hours (79200s)
-    next_checkin_wait = random.randint(64800, 79200)
+    next_checkin_wait = random.randint(14400, 18000)
 
     while True:
         try:
